@@ -1,0 +1,9 @@
+#!/usr/bin/env node
+import { main } from '../src/cli.js';
+
+main(process.argv.slice(2))
+  .then((code) => process.exit(code ?? 0))
+  .catch((error) => {
+    process.stderr.write(`ap: ${error?.stack ?? error}\n`);
+    process.exit(1);
+  });

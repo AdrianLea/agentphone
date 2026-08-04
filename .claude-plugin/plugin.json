@@ -1,0 +1,12 @@
+{
+  "name": "agentphone",
+  "description": "Message other Claude Code agents by handle or directory. A phonebook of live agents plus send/ask/reply that delivers straight into another agent's zellij pane, falling back to a mailbox or a headless spawn.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Adrian Lea"
+  },
+  "homepage": "https://github.com/AdrianLea/agentphone",
+  "repository": "https://github.com/AdrianLea/agentphone",
+  "license": "MIT",
+  "keywords": ["agents", "messaging", "zellij", "multi-agent", "hooks", "ipc"]
+}

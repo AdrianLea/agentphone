@@ -1,0 +1,17 @@
+{
+  "name": "agentphone",
+  "version": "0.1.0",
+  "description": "Message other Claude Code agents by handle or directory",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "ap": "./bin/ap"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "license": "MIT"
+}
