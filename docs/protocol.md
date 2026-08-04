@@ -190,3 +190,18 @@ in a tool call and a typed line would land as a stray prompt.
 
 Liveness is never tracked by agentphone. `claude agents --json` is the authority, filtered by
 `kill -0`; the registry is swept of entries whose session is gone.
+
+### Child sessions are invisible
+
+`claude agents --json` enumerates `~/.claude/sessions/<pid>.json`. A `claude` launched from inside
+another Claude Code session inherits `CLAUDE_CODE_CHILD_SESSION=1`, never writes that file, and is
+therefore invisible to it - and so to the phonebook - even though the session runs normally and
+registers itself. Its transcript is also not saved, so `ap ask --spawn` cannot resume it.
+
+Anything that launches an agent programmatically must clear `CLAUDE_CODE_CHILD_SESSION`,
+`CLAUDE_CODE_SESSION_ID` and `CLAUDE_CODE_ENTRYPOINT`. `ap peer` does this; `ap doctor` reports
+any registered agent whose process is alive but which never announced itself.
+
+Delivery spans zellij sessions: `zellij --session <name> action ...` addresses any session on the
+machine, so agents in a detached lab session are as reachable as ones in the session you are
+looking at.

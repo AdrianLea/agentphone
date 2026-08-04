@@ -83,6 +83,20 @@ ap reply thr_abc "verifyToken is unchanged here - we pin @acme/auth at 2.1"
 
 If the sender used `ap ask` they are blocked waiting on you, so reply promptly and concretely.
 
+## Starting a new agent somewhere else
+
+```
+ap peer ~/some-repo --as helper --allow "Bash(ap:*)"
+```
+
+Launches a Claude Code agent in that directory inside a separate, detached zellij session, so it
+does not disturb the session the user is working in, and returns once it is reachable. Use this
+rather than running `claude` yourself in a pane: a `claude` you start inherits
+`CLAUDE_CODE_CHILD_SESSION` and becomes invisible to the phonebook.
+
+Remember that a new agent starts with **no knowledge of your conversation**. Tell it what it needs
+in the message you send; do not assume shared context.
+
 ## Staying reachable
 
 ```

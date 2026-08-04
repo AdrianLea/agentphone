@@ -90,6 +90,51 @@ ap doctor
 The plugin ships its own hooks, so there is nothing to hand-edit in `settings.json`. Agents
 register themselves on `SessionStart`. Restart your sessions to pick it up, then `ap who`.
 
+## Running agents in an isolated zellij session
+
+If you do not want extra agents cluttering the zellij session you actually work in, put them in
+their own detached one:
+
+```console
+$ ap peer ~/acme-worker --as worker --allow "Bash(ap:*)"
+launching an agent in ~/acme-worker inside zellij session "aplab"...
+worker is live in ~/acme-worker  (aplab/terminal_2, reach instant)
+  message it:  ap send worker "..."
+  watch it:    zellij attach aplab      (in a separate terminal window)
+```
+
+The lab session is created **detached**, so nothing appears in your current session. Messaging
+works across zellij sessions - the phonebook spans them - so `ap send` / `ap ask` reach it
+normally. Open a separate terminal window and `zellij attach aplab` whenever you want to watch or
+type at it directly. Until you attach, its panes stay at a small default viewport.
+
+Tear the whole lab down with `zellij kill-session aplab` (or `delete-session` to forget it too),
+which stops every agent in it at once.
+
+### Why `ap peer` exists rather than just `zellij action new-pane -- claude`
+
+A `claude` launched from inside another Claude Code session inherits
+`CLAUDE_CODE_CHILD_SESSION=1`, which silently puts it in child-session mode:
+
+- transcript saving is off (`Transcript saving is off - inherited from parent`)
+- it never writes `~/.claude/sessions/<pid>.json`
+- so it is **invisible to `claude agents --json`**, therefore invisible to the phonebook, and not
+  resumable by `ap ask --spawn`
+
+The agent runs fine and even registers itself, but nothing can address it. `ap peer` clears
+`CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID` and `CLAUDE_CODE_ENTRYPOINT` so the new
+agent is a first-class session. `ap doctor` flags any agent stuck in this state.
+
+### Separate sessions do not share context
+
+Worth being explicit, because "sync" is easy to assume: two Claude Code sessions never share a
+conversation. Nothing about agentphone changes that. What they share is the store - presence,
+mailboxes, threads, and the audit log - so they can *see and message* each other.
+
+The only thing that actually transfers context is `ap ask`, which either gets you an answer from
+an agent that already has it, or resumes that directory's transcript via `--spawn`. That is the
+point: you get the conclusion, not the context.
+
 ## Commands
 
 ```
@@ -98,6 +143,7 @@ ap whois <target>                  detail for one agent
 ap send <target> "<msg>"           fire-and-forget  --priority urgent --type task --one --dry-run
 ap ask <target> "<question>"       blocking         --timeout 180 --spawn --no-spawn --budget 0.5
 ap reply <thread> "<msg>"          answer a message
+ap peer <dir> [--as N] [--allow P] launch an agent in <dir> in a separate detached zellij session
 ap wake <target>                   nudge an agent about queued mail
 ap status "<text>"                 what you are working on, shown in everyone's `ap who`
 ap inbox | ap read [--drain]       your pending messages

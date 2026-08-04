@@ -5,6 +5,7 @@ import { liveAgents } from './agents.js';
 import { runHook } from './deliver.js';
 import { readPayload, renderBlock, renderForSpawn } from './envelope.js';
 import { P, config, ensureStore, inboxDir } from './paths.js';
+import { DEFAULT_LAB_SESSION, launchPeer } from './peer.js';
 import { allEntries, deregister, phonebook, register, selfId, sweep, updateSelf } from './registry.js';
 import { chooseRoute, resolveTarget } from './resolve.js';
 import { buildMessage, clearWaiting, deliver, isWaiting, markWaiting, selfDescriptor } from './send.js';
@@ -19,7 +20,7 @@ import {
   waitForMessage,
   waitForReply,
 } from './store.js';
-import { listJson, logEvent, run, tildify } from './util.js';
+import { expandPath, isAlive, listJson, logEvent, run, tildify } from './util.js';
 import { available as zellijAvailable, insideZellij, selfAddr } from './zellij.js';
 
 const BOOLEANS = new Set([
@@ -354,6 +355,43 @@ async function cmdReply(args) {
   return 0;
 }
 
+async function cmdPeer(args) {
+  const spec = args._[0];
+  if (!spec) {
+    err('usage: ap peer <dir> [--session aplab] [--as name] [--allow "Bash(ap:*)"]');
+    return 1;
+  }
+  const cwd = expandPath(spec);
+  if (!fs.existsSync(cwd)) {
+    err(`directory does not exist: ${cwd}`);
+    return 1;
+  }
+  const session = typeof args.flags.session === 'string' ? args.flags.session : DEFAULT_LAB_SESSION;
+  const name = typeof args.flags.as === 'string' ? args.flags.as : `peer-${path.basename(cwd)}`;
+  const allow = typeof args.flags.allow === 'string' ? [args.flags.allow] : [];
+
+  err(`launching an agent in ${tildify(cwd)} inside zellij session "${session}"...`);
+  const res = await launchPeer({
+    cwd,
+    session,
+    name,
+    allow,
+    model: typeof args.flags.model === 'string' ? args.flags.model : null,
+  });
+  if (!res.ok) {
+    err(res.reason);
+    return 1;
+  }
+  out(`${res.agent.handle} is live in ${tildify(cwd)}  (${session}/${res.pane}, reach ${res.agent.reach})`);
+  out(`  message it:  ap send ${res.agent.handle} "..."`);
+  out(`  watch it:    zellij attach ${session}      (in a separate terminal window)`);
+  if (res.labCreated) {
+    out(`\nzellij session "${session}" was created detached, so nothing appeared in your current`);
+    out('session. Its panes stay at a small default size until you attach to it.');
+  }
+  return 0;
+}
+
 async function cmdWake(args) {
   const spec = args._[0];
   if (!spec) {
@@ -520,6 +558,19 @@ async function cmdDoctor() {
   const me = allEntries().find((e) => e.session_id === selfId());
   say(Boolean(me), 'this agent is registered', me ? `handle "${me.handle}"` : 'run `ap register`');
 
+  // A registered agent whose process is alive but which `claude agents --json` cannot see is in
+  // child-session mode: it inherited CLAUDE_CODE_CHILD_SESSION, so it never announced itself and
+  // is invisible to the phonebook. Flag it rather than silently half-supporting it.
+  const liveIds = new Set(agents.map((a) => a.sessionId));
+  const degraded = allEntries().filter((e) => e.pid && isAlive(e.pid) && !liveIds.has(e.session_id));
+  say(
+    degraded.length === 0,
+    'no degraded child sessions',
+    degraded.length
+      ? `${degraded.map((e) => e.handle).join(', ')} - alive but unannounced; relaunch with CLAUDE_CODE_CHILD_SESSION cleared (or use \`ap peer\`)`
+      : undefined,
+  );
+
   const removed = await sweep();
   say(true, 'registry swept', removed.length ? `removed ${removed.join(', ')}` : 'no stale entries');
 
@@ -561,6 +612,8 @@ const HELP = `agentphone - message other Claude Code agents by handle or directo
   ap send <target> "<msg>"           fire-and-forget. --priority urgent --type task --one --dry-run
   ap ask <target> "<question>"       blocking question. --timeout 180 --spawn --no-spawn --budget 0.5
   ap reply <thread> "<msg>"          answer a message
+  ap peer <dir> [--as N] [--allow P] launch an agent in <dir> inside a separate, detached zellij
+                                     session, leaving your own session untouched
   ap wake <target>                   nudge an agent about queued mail; prints the route
   ap inbox | ap read [--drain]       your pending messages
   ap wait [--timeout 600]            block until a message arrives (be on call)
@@ -594,6 +647,8 @@ export async function main(argv) {
       return cmdAsk(args);
     case 'reply':
       return cmdReply(args);
+    case 'peer':
+      return cmdPeer(args);
     case 'wake':
       return cmdWake(args);
     case 'inbox':
