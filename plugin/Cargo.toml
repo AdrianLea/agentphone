@@ -1,0 +1,19 @@
+[package]
+name = "agentphone-bar"
+version = "0.1.0"
+edition = "2021"
+description = "zellij status bar showing how many agents are waiting on you"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+zellij-tile = "0.44.3"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"

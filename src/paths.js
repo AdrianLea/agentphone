@@ -25,9 +25,14 @@ export const DEFAULTS = {
   wait_timeout_s: 600,
   spawn_budget_usd: 0.5,
   expires_in_s: 4 * 3600,
-  // A single typed line. Anything longer goes to payloads/ and is referenced by path,
-  // because an embedded newline submits the prompt early (verified against zellij 0.44.3).
-  max_body_chars: 1200,
+  // A single typed line. Anything longer goes to payloads/ and is referenced by path, because an
+  // embedded newline submits the prompt early (verified against zellij 0.44.3).
+  //
+  // Measured, not guessed: `write-chars` delivers at least 64,000 characters intact into a
+  // raw-mode reader, so the transport is not the constraint. The limit is set for token cost and
+  // readability instead - and kept high because offloading has a real penalty, namely that the
+  // recipient must approve reading a file outside its working directory.
+  max_body_chars: 8000,
   urgent_nudge: true,
   delivery_cap_per_turn: 10,
 };

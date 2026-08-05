@@ -211,6 +211,12 @@ async function cmdSend(args) {
     const r = await deliver(target, msg, { dryRun: Boolean(args.flags['dry-run']) });
     if (r.ok) {
       out(`${r.dryRun ? '[dry-run] ' : ''}${target.handle} <- ${r.route} (${r.reason})  thread ${msg.thread}`);
+      if (msg.payload_path) {
+        // Offloaded text lives outside the recipient's working directory, so reading it will
+        // prompt them for permission. Say so rather than letting them block silently.
+        err(`  note: body was too long to type inline, so ${target.handle} must approve reading`);
+        err(`  ${msg.payload_path}`);
+      }
     } else {
       err(`${target.handle}: ${r.reason}`);
       failures += 1;

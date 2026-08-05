@@ -6,6 +6,7 @@ import { useTempStore } from './helpers.js';
 useTempStore();
 const { create, isExpired, renderBlock, renderLine, sanitizeBody, stripControls, validate } =
   await import('../src/envelope.js');
+const { config } = await import('../src/paths.js');
 
 const base = {
   from: { handle: 'caller', agent_id: 'sess-caller', cwd: '/tmp/caller' },
@@ -66,10 +67,19 @@ test('renderLine carries provenance and a reply hint', () => {
   assert.match(line, /blocked waiting for an answer/);
 });
 
-test('an oversized body is offloaded to a payload file', () => {
-  const msg = create({ ...base, body: 'x'.repeat(5000) });
+test('a body within the limit is kept inline', () => {
+  // write-chars was measured delivering 64k intact, so the limit is about token cost, not
+  // transport. Staying inline matters: an offloaded payload makes the recipient ask permission
+  // to read a file outside its working directory.
+  const msg = create({ ...base, body: 'x'.repeat(config().max_body_chars - 100) });
+  assert.equal(msg.payload_path, null);
+  assert.ok(!renderLine(msg).includes('\n'));
+});
+
+test('a body over the limit is offloaded to a payload file', () => {
+  const msg = create({ ...base, body: 'x'.repeat(config().max_body_chars + 500) });
   assert.ok(msg.payload_path, 'expected a payload path');
-  assert.ok(msg.body.length < 1400);
+  assert.ok(msg.body.length < config().max_body_chars + 200);
   assert.match(msg.body, /full text:/);
   assert.ok(!renderLine(msg).includes('\n'));
 });

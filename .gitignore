@@ -1,5 +1,6 @@
-node_modules/
 .DS_Store
-*.log
 .env
 .env.*
+*.log
+node_modules/
+plugin/target/
