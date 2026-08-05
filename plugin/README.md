@@ -16,7 +16,27 @@ Needs Rust and the WASI target:
 ```sh
 rustup target add wasm32-wasip1
 cargo build --release --target wasm32-wasip1
-# -> target/wasm32-wasip1/release/agentphone_bar.wasm
+# -> target/wasm32-wasip1/release/agentphone-bar.wasm
+```
+
+### Two build requirements that are easy to get wrong
+
+Both of these fail with the same unhelpful message, `could not find exported function`, which is
+wasmi failing to instantiate the module rather than anything about your plugin code:
+
+- **It must be a `[[bin]]` crate, not a `cdylib`.** zellij loads the plugin as a WASI *command* and
+  looks up the `_start` entry point, which only a bin target emits. `register_plugin!` supplies its
+  own `fn main` (it installs a panic handler), so do not write one yourself or you get `E0428`.
+- **Do not set `strip` in the release profile.** It removes the `#[no_mangle]` exports that
+  `register_plugin!` generates.
+
+A correct build exports `_start`, `__main_void`, `load`, `update`, `render`, `pipe`,
+`plugin_version` and `memory`. Check with:
+
+```sh
+node -e 'const fs=require("fs");const m=new WebAssembly.Module(fs.readFileSync(process.argv[1]));
+console.log(WebAssembly.Module.exports(m).map(e=>e.name).sort().join(", "))' \
+  target/wasm32-wasip1/release/agentphone-bar.wasm
 ```
 
 ## Install
@@ -31,7 +51,7 @@ Verify it first in an isolated tab, without touching your default layout:
 layout {
     pane
     pane size=1 borderless=true {
-        plugin location="file:/ABSOLUTE/PATH/TO/agentphone_bar.wasm" {
+        plugin location="file:/ABSOLUTE/PATH/TO/agentphone-bar.wasm" {
             ap_path "/ABSOLUTE/PATH/TO/ap"
         }
     }
@@ -53,7 +73,7 @@ layout {
     pane size=1 borderless=true { plugin location="zellij:tab-bar" }
     pane
     pane size=1 borderless=true {
-        plugin location="file:/ABSOLUTE/PATH/TO/agentphone_bar.wasm" {
+        plugin location="file:/ABSOLUTE/PATH/TO/agentphone-bar.wasm" {
             ap_path "/ABSOLUTE/PATH/TO/ap"
         }
     }
@@ -88,3 +108,12 @@ does almost no work.
   shells out to `ap` rather than reading the store. That is also why it needs RunCommands.
 - **`dump-screen` does not work on plugin panes**, so the bar cannot be verified by scripting - it
   has to be looked at.
+
+## Troubleshooting
+
+`Error in plugin, check logs for more info` in the pane means the module failed to load. The log
+lives at `$TMPDIR/zellij-501/zellij-log/zellij.log` on macOS (not `/tmp`), and the useful line is
+the `Caused by:` under `failed to load plugin from instance`.
+
+`Failed to read permission cache file: No such file or directory` is **not** an error you need to
+fix. It just means no grant is cached yet, so zellij is about to ask you for `RunCommands`.

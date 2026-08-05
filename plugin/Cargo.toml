@@ -5,8 +5,13 @@ edition = "2021"
 description = "zellij status bar showing how many agents are waiting on you"
 license = "MIT"
 
-[lib]
-crate-type = ["cdylib"]
+# A zellij plugin must be a *binary* crate, not a cdylib. zellij's wasm engine looks up the WASI
+# command entry point `_start`, which only a bin target emits - a cdylib produces the
+# register_plugin! exports but no `_start`, and zellij then fails to instantiate the module with
+# "could not find exported function".
+[[bin]]
+name = "agentphone-bar"
+path = "src/main.rs"
 
 [dependencies]
 zellij-tile = "0.44.3"
@@ -14,6 +19,5 @@ zellij-tile = "0.44.3"
 [profile.release]
 opt-level = "z"
 lto = true
-strip = true
 codegen-units = 1
-panic = "abort"
+# Do not set `strip`: it removes the #[no_mangle] exports that register_plugin! generates.
