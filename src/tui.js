@@ -240,12 +240,10 @@ async function doWake(item) {
 export const FLOATER_PANE_NAME = 'ap-attention';
 
 /**
- * Retire any older floater so pressing the key twice cannot stack them.
+ * Retire any older instance so running this twice cannot stack views.
  *
- * This used to close the old one and then exit, making the key a toggle - but zellij's `Run`
- * always spawns a pane first, so a "toggle" meant a pane visibly appearing just to make both
- * disappear. Replacing the old one instead makes the key idempotent: press it as often as you
- * like and you get exactly one, current floater. Dismiss with q, Esc, or Alt+f.
+ * A second instance replaces the first rather than stacking, so running it again just gives you
+ * one current view. Dismiss with q or Esc.
  *
  * The name is matched exactly. A loose match would be dangerous: it would also close any pane
  * whose title merely contains the name, including a live Claude session.

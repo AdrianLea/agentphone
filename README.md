@@ -149,7 +149,7 @@ worker                ~/acme-worker      your input  38s      aplab/terminal_2  
 docs                  ~/acme-docs        a nudge              -                 1 queued message
 ```
 
-`Alt+a` opens it as a zellij floating pane you can act in:
+`ap attention --tui` opens an interactive view you can act in:
 
 ```
   2 agents waiting on you  ·  1 with queued mail
@@ -182,7 +182,7 @@ ap send <target> "<msg>"           fire-and-forget  --priority urgent --type tas
 ap ask <target> "<question>"       blocking         --timeout 180 --spawn --no-spawn --budget 0.5
 ap reply <thread> "<msg>"          answer a message
 ap peer <dir> [--as N] [--allow P] launch an agent in <dir> in a separate detached zellij session
-ap attention [--tui]               what needs you; Alt+a opens the floater
+ap attention [--tui]               what needs you; --tui to triage interactively
 ap wake <target>                   nudge an agent about queued mail
 ap status "<text>"                 what you are working on, shown in everyone's `ap who`
 ap inbox | ap read [--drain]       your pending messages

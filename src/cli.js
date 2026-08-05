@@ -27,7 +27,7 @@ import { available as zellijAvailable, insideZellij, selfAddr } from './zellij.j
 
 const BOOLEANS = new Set([
   'json', 'all', 'drain', 'one', 'dry-run', 'spawn', 'no-spawn', 'allow-writes', 'refused', 'help',
-  'quiet', 'tui', 'count', 'ticker', 'ask',
+  'quiet', 'tui', 'count', 'ask',
 ]);
 
 export function parseArgs(argv) {
@@ -376,22 +376,6 @@ async function cmdAttention(args) {
     out(String(items.filter((i) => i.kind !== QUEUED).length));
     return 0;
   }
-  if (args.flags.ticker) {
-    // A compact feed for the zellij bar: KIND|handle|detail records joined by ';'.
-    // Kept here rather than in the plugin so the formatting stays testable, and so the plugin
-    // needs no JSON parser.
-    const kind = { [PERMISSION]: 'P', [INPUT]: 'I', [QUEUED]: 'Q' };
-    out(
-      items
-        .map((i) => {
-          const detail =
-            i.kind === QUEUED ? `${i.count}` : i.waitedMs != null ? humanDuration(i.waitedMs) : '-';
-          return [kind[i.kind], i.handle.replace(/[|;]/g, ''), detail].join('|');
-        })
-        .join(';'),
-    );
-    return 0;
-  }
   if (args.flags.json) {
     out(JSON.stringify(items.map(({ agent, messages, ...rest }) => ({ ...rest, agent: { handle: agent.handle, sessionId: agent.sessionId, cwd: agent.cwd, status: agent.status, zellij: agent.zellij } })), null, 2));
     return 0;
@@ -676,7 +660,7 @@ const HELP = `agentphone - message other Claude Code agents by handle or directo
   ap peer <dir> [--as N] [--allow P] launch an agent in <dir> inside a separate, detached zellij
                                      session, leaving your own session untouched
   ap attention [--tui|--json|--count] what needs you: permission prompts, questions, queued mail.
-                                     --tui is the interactive floater (Alt+a in zellij)
+                                     --tui to triage interactively
   ap wake <target>                   nudge an agent about queued mail; prints the route
   ap inbox | ap read [--drain]       your pending messages
   ap wait [--timeout 600]            block until a message arrives (be on call)
