@@ -7,17 +7,53 @@ useTempStore();
 const { BUILTIN, DEFAULT_POLICY, listPolicies, loadPolicy, savePolicy, toClaudeArgs } =
   await import('../src/policy.js');
 
-test('every built-in policy allows the agent to talk', () => {
+test('every built-in policy leaves the agent able to talk', () => {
   // Without this an agent cannot run `ap reply`, so it cannot answer and the deadlock returns.
+  // Two ways to satisfy it: an explicit allow, or a mode that auto-approves everything.
   for (const [name, p] of Object.entries(BUILTIN)) {
-    assert.ok(p.allow.includes('Bash(ap:*)'), `${name} must allow ap`);
+    const runnable = p.allow.includes('Bash(ap:*)') || p.mode === 'bypassPermissions';
+    assert.ok(runnable, `${name} must leave ap runnable`);
   }
 });
 
-test('the default policy lets an agent read and reply without prompting', () => {
+test('no policy denies ap, because a deny would win even in bypass mode', () => {
+  // Deny rules survive bypassPermissions, so denying ap would silently mute the agent.
+  for (const [name, p] of Object.entries(BUILTIN)) {
+    assert.ok(!(p.deny ?? []).some((d) => /\bap\b/.test(d)), `${name} must not deny ap`);
+  }
+});
+
+test('the default policy never prompts on routine work', () => {
   const p = loadPolicy(DEFAULT_POLICY);
-  for (const tool of ['Read', 'Grep', 'Glob', 'Bash(ap:*)']) assert.ok(p.allow.includes(tool));
-  assert.ok(!p.allow.includes('Write'), 'the default must still ask before changing files');
+  for (const tool of ['Bash', 'Write', 'Edit', 'Read']) {
+    assert.ok(p.allow.includes(tool), `${tool} must be pre-authorised or the agent will block`);
+  }
+});
+
+test('the default policy does not use bypassPermissions', () => {
+  // Bypass opens a per-launch confirmation dialog with no persisted acceptance, so an agent
+  // launched that way never reaches SessionStart and never registers. A broad allowlist reaches
+  // the same no-prompt behaviour and keeps the deny floor.
+  assert.notEqual(loadPolicy(DEFAULT_POLICY).mode, 'bypassPermissions');
+  const args = toClaudeArgs(loadPolicy(DEFAULT_POLICY));
+  assert.ok(!args.includes('bypassPermissions'));
+});
+
+test('the deny floor holds under every policy, including the permissive one', () => {
+  for (const [name, p] of Object.entries(BUILTIN)) {
+    for (const d of ['Bash(rm -rf:*)', 'Bash(sudo:*)', 'Read(~/.ssh/**)', 'Write(~/.claude/**)']) {
+      assert.ok((p.deny ?? []).includes(d), `${name} must keep ${d} denied`);
+    }
+  }
+});
+
+test('a permissive allow cannot reach credentials or its own guardrails', () => {
+  // The allowlist says Bash/Write/Edit broadly; the deny rules are what stop those reaching
+  // ~/.ssh and ~/.claude, and deny survives every permission mode.
+  const args = toClaudeArgs(loadPolicy(DEFAULT_POLICY));
+  const denied = args.filter((a, i) => args[i - 1] === '--disallowedTools');
+  assert.ok(denied.includes('Read(~/.ssh/**)'));
+  assert.ok(denied.includes('Write(~/.claude/**)'));
 });
 
 test('policies map onto claude allow/deny flags', () => {

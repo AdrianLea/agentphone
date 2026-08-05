@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { config } from './paths.js';
+import { HARD_DENY } from './policy.js';
 import { logEvent, run } from './util.js';
 
 /** Claude Code stores transcripts under a cwd-derived directory name: every non-alnum -> '-'. */
@@ -58,10 +59,17 @@ export async function spawnAsk({
     'json',
     '--max-budget-usd',
     String(budget ?? cfg.spawn_budget_usd),
-    '--permission-mode',
-    allowWrites ? 'acceptEdits' : 'dontAsk',
   ];
-  if (!allowWrites) args.push('--tools', 'Read,Grep,Glob');
+  // Explicitly allow the tools this run is given, so nothing prompts. bypassPermissions is avoided
+  // here for the same reason as in the policies: it opens a per-launch confirmation dialog that a
+  // headless run has no way to answer.
+  if (allowWrites) {
+    for (const t of ['Read', 'Grep', 'Glob', 'Write', 'Edit', 'Bash']) args.push('--allowedTools', t);
+  } else {
+    args.push('--tools', 'Read,Grep,Glob');
+    for (const t of ['Read', 'Grep', 'Glob']) args.push('--allowedTools', t);
+  }
+  for (const pattern of HARD_DENY) args.push('--disallowedTools', pattern);
   if (transcript) args.push('--resume', transcript.sessionId, '--fork-session');
 
   logEvent({
