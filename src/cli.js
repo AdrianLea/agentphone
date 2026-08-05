@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { liveAgents } from './agents.js';
+import { INPUT, PERMISSION, QUEUED, attention, humanDuration } from './attention.js';
 import { runHook } from './deliver.js';
 import { readPayload, renderBlock, renderForSpawn } from './envelope.js';
 import { P, config, ensureStore, inboxDir } from './paths.js';
@@ -10,6 +11,7 @@ import { allEntries, deregister, phonebook, register, selfId, sweep, updateSelf 
 import { chooseRoute, resolveTarget } from './resolve.js';
 import { buildMessage, clearWaiting, deliver, isWaiting, markWaiting, selfDescriptor } from './send.js';
 import { spawnAsk } from './spawn.js';
+import { runTui } from './tui.js';
 import {
   claim,
   pending,
@@ -24,7 +26,8 @@ import { expandPath, isAlive, listJson, logEvent, run, tildify } from './util.js
 import { available as zellijAvailable, insideZellij, selfAddr } from './zellij.js';
 
 const BOOLEANS = new Set([
-  'json', 'all', 'drain', 'one', 'dry-run', 'spawn', 'no-spawn', 'allow-writes', 'refused', 'help', 'quiet',
+  'json', 'all', 'drain', 'one', 'dry-run', 'spawn', 'no-spawn', 'allow-writes', 'refused', 'help',
+  'quiet', 'tui', 'count',
 ]);
 
 export function parseArgs(argv) {
@@ -355,6 +358,38 @@ async function cmdReply(args) {
   return 0;
 }
 
+async function cmdAttention(args) {
+  if (args.flags.tui) return runTui();
+
+  const items = await attention();
+  if (args.flags.count) {
+    // Bare number, for the zellij status bar and the Claude Code statusline.
+    out(String(items.filter((i) => i.kind !== QUEUED).length));
+    return 0;
+  }
+  if (args.flags.json) {
+    out(JSON.stringify(items.map(({ agent, messages, ...rest }) => ({ ...rest, agent: { handle: agent.handle, sessionId: agent.sessionId, cwd: agent.cwd, status: agent.status, zellij: agent.zellij } })), null, 2));
+    return 0;
+  }
+  if (!items.length) {
+    out('nothing is waiting on you');
+    return 0;
+  }
+  out(
+    table(items, [
+      { header: 'AGENT', get: (i) => i.handle },
+      { header: 'DIR', get: (i) => tildify(i.agent.cwd ?? '') },
+      { header: 'NEEDS', get: (i) => (i.kind === PERMISSION ? 'permission' : i.kind === INPUT ? 'your input' : 'a nudge') },
+      { header: 'FOR', get: (i) => (i.waitedMs != null ? humanDuration(i.waitedMs) : '') },
+      { header: 'WHERE', get: (i) => (i.agent.zellij ? `${i.agent.zellij.session}/${i.agent.zellij.pane}` : '-') },
+      { header: 'DETAIL', get: (i) => i.detail },
+    ]),
+  );
+  const blocked = items.filter((i) => i.kind !== QUEUED).length;
+  if (blocked) err(`\n${blocked} waiting on you. Triage interactively with the floater: ap attention --tui`);
+  return 0;
+}
+
 async function cmdPeer(args) {
   const spec = args._[0];
   if (!spec) {
@@ -614,6 +649,8 @@ const HELP = `agentphone - message other Claude Code agents by handle or directo
   ap reply <thread> "<msg>"          answer a message
   ap peer <dir> [--as N] [--allow P] launch an agent in <dir> inside a separate, detached zellij
                                      session, leaving your own session untouched
+  ap attention [--tui|--json|--count] what needs you: permission prompts, questions, queued mail.
+                                     --tui is the interactive floater (Alt+a in zellij)
   ap wake <target>                   nudge an agent about queued mail; prints the route
   ap inbox | ap read [--drain]       your pending messages
   ap wait [--timeout 600]            block until a message arrives (be on call)
@@ -647,6 +684,8 @@ export async function main(argv) {
       return cmdAsk(args);
     case 'reply':
       return cmdReply(args);
+    case 'attention':
+      return cmdAttention(args);
     case 'peer':
       return cmdPeer(args);
     case 'wake':

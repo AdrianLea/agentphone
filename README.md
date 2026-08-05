@@ -135,6 +135,44 @@ The only thing that actually transfers context is `ap ask`, which either gets yo
 an agent that already has it, or resumes that directory's transcript via `--spawn`. That is the
 point: you get the conclusion, not the context.
 
+## When an agent needs you
+
+Agents block. A permission prompt is the common case, and it is the one state agentphone
+deliberately refuses to type into - so a blocked agent is unreachable with your message sitting in
+its mailbox. `ap attention` is the single place that surfaces every agent needing you:
+
+```console
+$ ap attention
+AGENT                 DIR                NEEDS       FOR      WHERE             DETAIL
+api                   ~/acme-api         permission  4m12s    aplab/terminal_3  permission prompt
+worker                ~/acme-worker      your input  38s      aplab/terminal_2  input needed
+docs                  ~/acme-docs        a nudge              -                 1 queued message
+```
+
+`Alt+a` opens it as a zellij floating pane you can act in:
+
+```
+  2 agents waiting on you  ·  1 with queued mail
+
+  ▸ 1  api                      ~/acme-api             needs permission  4m12s
+       permission prompt
+       [a] approve  [d] deny  [g] go to pane
+    2  worker                   ~/acme-worker          waiting on you    38s
+```
+
+Two states, two affordances - this distinction matters. An agent at a permission prompt needs a
+**keystroke**, not prose; sending it a message would just queue behind the dialog. An agent
+waiting on input needs an actual answer.
+
+Approving shows you the agent's real dialog verbatim - the tool, its arguments, and Claude Code's
+own description - before you answer, then confirms the prompt actually cleared. If the option list
+is scrolled it says so, because approving against a partially visible list is exactly the mistake
+worth preventing.
+
+**The floater is interactive-only and refuses to run without a TTY.** That is deliberate: an
+agent's Bash tool has no TTY, so agents structurally cannot approve each other's permission
+prompts. Otherwise the message channel would double as a privilege-escalation channel.
+
 ## Commands
 
 ```
@@ -144,6 +182,7 @@ ap send <target> "<msg>"           fire-and-forget  --priority urgent --type tas
 ap ask <target> "<question>"       blocking         --timeout 180 --spawn --no-spawn --budget 0.5
 ap reply <thread> "<msg>"          answer a message
 ap peer <dir> [--as N] [--allow P] launch an agent in <dir> in a separate detached zellij session
+ap attention [--tui]               what needs you; Alt+a opens the floater
 ap wake <target>                   nudge an agent about queued mail
 ap status "<text>"                 what you are working on, shown in everyone's `ap who`
 ap inbox | ap read [--drain]       your pending messages
