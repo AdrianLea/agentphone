@@ -1,4 +1,4 @@
-import { run } from './util.js';
+import { run, sleep } from './util.js';
 
 /** Turn a bare pane number into zellij's canonical `terminal_<n>` form. */
 export function normalizePane(pane) {
@@ -111,10 +111,25 @@ export async function closePane(session, pane) {
   });
 }
 
-/** Type a single line into a pane and submit it. */
+/**
+ * Chunk size and pacing for typed delivery.
+ *
+ * Measured, not guessed: a single 7800-character write into a live Claude Code pane arrived as
+ * 5756 characters in the recorded user message, with the tail intact - so bytes were dropped from
+ * the *middle*, which is input-buffer overflow rather than a length cap. A plain node reader in
+ * raw mode takes 64,000 characters intact, because it drains far faster than a TUI that re-renders
+ * per keystroke. Pacing the writes gives the receiver time to keep up.
+ */
+const CHUNK_CHARS = 400;
+const CHUNK_PAUSE_MS = 40;
+
+/** Type a single line into a pane and submit it, paced so the receiver can drain it. */
 export async function deliverLine(session, pane, line) {
-  const w = await writeChars(session, pane, line);
-  if (!w.ok) return { ok: false, reason: `write-chars failed: ${w.stderr.trim()}` };
+  for (let i = 0; i < line.length; i += CHUNK_CHARS) {
+    const w = await writeChars(session, pane, line.slice(i, i + CHUNK_CHARS));
+    if (!w.ok) return { ok: false, reason: `write-chars failed: ${w.stderr.trim()}` };
+    if (i + CHUNK_CHARS < line.length) await sleep(CHUNK_PAUSE_MS);
+  }
   const k = await sendKeys(session, pane, 'Enter');
   if (!k.ok) return { ok: false, reason: `send-keys failed: ${k.stderr.trim()}` };
   return { ok: true };

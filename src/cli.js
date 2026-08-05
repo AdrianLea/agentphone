@@ -7,6 +7,7 @@ import { runHook } from './deliver.js';
 import { readPayload, renderBlock, renderForSpawn } from './envelope.js';
 import { P, config, ensureStore, inboxDir } from './paths.js';
 import { DEFAULT_LAB_SESSION, launchPeer } from './peer.js';
+import { DEFAULT_POLICY, listPolicies, loadPolicy, toClaudeArgs } from './policy.js';
 import { allEntries, deregister, phonebook, register, selfId, sweep, updateSelf } from './registry.js';
 import { chooseRoute, resolveTarget } from './resolve.js';
 import { buildMessage, clearWaiting, deliver, isWaiting, markWaiting, selfDescriptor } from './send.js';
@@ -399,6 +400,49 @@ async function cmdAttention(args) {
   return 0;
 }
 
+async function cmdPolicy(args) {
+  const [sub, name] = args._;
+
+  if (!sub || sub === 'list') {
+    const policies = listPolicies();
+    if (args.flags.json) {
+      out(JSON.stringify(policies, null, 2));
+      return 0;
+    }
+    out(
+      table(policies, [
+        { header: 'POLICY', get: (p) => `${p.name}${p.name === DEFAULT_POLICY ? ' *' : ''}` },
+        { header: 'FROM', get: (p) => p.source },
+        { header: 'ALLOWS', get: (p) => (p.allow ?? []).length },
+        { header: 'DENIES', get: (p) => (p.deny ?? []).length },
+        { header: 'WHAT IT IS FOR', get: (p) => p.description ?? '' },
+      ]),
+    );
+    out(`\n* = the default for \`ap peer\`. Override with --policy <name>, or --policy none to inherit yours.`);
+    return 0;
+  }
+
+  if (sub === 'show') {
+    const policy = loadPolicy(name);
+    if (!policy) {
+      err(`unknown policy "${name}" - see \`ap policy list\``);
+      return 1;
+    }
+    out(`${policy.name}  (${policy.source})`);
+    if (policy.description) out(`  ${policy.description}`);
+    out('');
+    for (const [label, list] of [['allow', policy.allow], ['ask', policy.ask], ['deny', policy.deny]]) {
+      for (const pattern of list ?? []) out(`  ${label.padEnd(6)} ${pattern}`);
+    }
+    out('\nas claude arguments:');
+    out(`  ${toClaudeArgs(policy).join(' ')}`);
+    return 0;
+  }
+
+  err('usage: ap policy [list|show <name>]');
+  return 1;
+}
+
 async function cmdPeer(args) {
   const spec = args._[0];
   if (!spec) {
@@ -413,6 +457,8 @@ async function cmdPeer(args) {
   const session = typeof args.flags.session === 'string' ? args.flags.session : DEFAULT_LAB_SESSION;
   const name = typeof args.flags.as === 'string' ? args.flags.as : `peer-${path.basename(cwd)}`;
   const allow = typeof args.flags.allow === 'string' ? [args.flags.allow] : [];
+  const policyFlag = typeof args.flags.policy === 'string' ? args.flags.policy : DEFAULT_POLICY;
+  const policy = policyFlag === 'none' ? null : policyFlag;
 
   err(`launching an agent in ${tildify(cwd)} inside zellij session "${session}"...`);
   const res = await launchPeer({
@@ -420,6 +466,7 @@ async function cmdPeer(args) {
     session,
     name,
     allow,
+    policy,
     model: typeof args.flags.model === 'string' ? args.flags.model : null,
   });
   if (!res.ok) {
@@ -427,6 +474,7 @@ async function cmdPeer(args) {
     return 1;
   }
   out(`${res.agent.handle} is live in ${tildify(cwd)}  (${session}/${res.pane}, reach ${res.agent.reach})`);
+  out(`  policy     ${res.policy ? `${res.policy.name} - ${res.policy.description ?? ''}` : 'none (inherits your defaults, so it may block on prompts)'}`);
   out(`  message it:  ap send ${res.agent.handle} "..."`);
   out(`  watch it:    zellij attach ${session}      (in a separate terminal window)`);
   if (res.labCreated) {
@@ -657,8 +705,9 @@ const HELP = `agentphone - message other Claude Code agents by handle or directo
   ap ask <target> "<question>"       blocking question. --timeout 180 --spawn --no-spawn --budget 0.5
   ap reply <thread> "<msg>" [--ask]  answer a message; --ask sends a clarifying question back
                                      to whoever asked, delivered as /btw so it does not derail them
-  ap peer <dir> [--as N] [--allow P] launch an agent in <dir> inside a separate, detached zellij
-                                     session, leaving your own session untouched
+  ap peer <dir> [--as N] [--policy P] launch an agent in <dir> inside a separate, detached zellij
+                                     session, pre-authorised so it does not block on prompts
+  ap policy [list|show <name>]       permission policies used when launching agents
   ap attention [--tui|--json|--count] what needs you: permission prompts, questions, queued mail.
                                      --tui to triage interactively
   ap wake <target>                   nudge an agent about queued mail; prints the route
@@ -696,6 +745,8 @@ export async function main(argv) {
       return cmdReply(args);
     case 'attention':
       return cmdAttention(args);
+    case 'policy':
+      return cmdPolicy(args);
     case 'peer':
       return cmdPeer(args);
     case 'wake':

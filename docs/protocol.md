@@ -58,10 +58,17 @@ Two transformations are applied at creation and are not optional:
 
 ### Single-line rule
 
+Typed delivery is paced: the line goes out in 400-character chunks 40ms apart. A single large
+write into a live Claude Code pane loses bytes from the *middle* - 7800 characters arrived as 5756
+in the recorded user message, with the tail intact, which is input-buffer overflow rather than a
+length cap. A plain raw-mode reader takes 64,000 characters unpaced because it drains far faster
+than a TUI that re-renders per keystroke, so synthetic probes do not reproduce it. Paced, the same
+7800 characters arrive complete.
+
 A newline in a typed payload submits the prompt early. This is measured, not assumed: writing
 `"first line\nsecond line"` to a pane and then sending `Enter` delivers **two** separate
 submissions. So a delivered `body` never contains a newline; anything longer than
-`max_body_chars` (default 1200) is written to `payloads/<msg-id>.md` and referenced by path.
+`max_body_chars` (default 8000) is written to `payloads/<msg-id>.md` and referenced by path.
 
 ## Provenance framing
 

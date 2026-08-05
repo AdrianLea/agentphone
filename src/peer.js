@@ -1,4 +1,5 @@
 import { liveAgents } from './agents.js';
+import { DEFAULT_POLICY, loadPolicy, toClaudeArgs } from './policy.js';
 import { phonebook } from './registry.js';
 import { run, sleep } from './util.js';
 
@@ -53,16 +54,24 @@ export async function launchPeer({
   session = DEFAULT_LAB_SESSION,
   name = null,
   allow = [],
+  policy = DEFAULT_POLICY,
   model = null,
   waitS = 90,
 }) {
   const lab = await ensureLabSession(session);
   if (!lab.ok) return lab;
 
+  const resolved = policy === null ? null : loadPolicy(policy);
+  if (policy !== null && !resolved) {
+    return { ok: false, reason: `unknown policy "${policy}" - see \`ap policy list\`` };
+  }
+
   const claudeArgs = [];
   if (name) claudeArgs.push('--name', name);
   if (model) claudeArgs.push('--model', model);
-  for (const pattern of allow) claudeArgs.push('--allowedTools', pattern);
+  // Pre-authorise the work this agent is for, so routine calls do not block on a dialog that
+  // agentphone then refuses to type into.
+  claudeArgs.push(...toClaudeArgs(resolved, { extraAllow: allow }));
 
   const paneArgs = [
     '--session',
@@ -88,7 +97,7 @@ export async function launchPeer({
     const found = book.find(
       (a) => a.cwd === cwd && (name ? a.name === name || a.handle === name : true) && a.zellij?.pane === pane,
     );
-    if (found) return { ok: true, agent: found, pane, session, labCreated: lab.created };
+    if (found) return { ok: true, agent: found, pane, session, labCreated: lab.created, policy: resolved };
     if (Date.now() >= deadline) {
       const seen = (await liveAgents({ refresh: true })).some((a) => a.cwd === cwd);
       return {

@@ -181,7 +181,8 @@ ap whois <target>                  detail for one agent
 ap send <target> "<msg>"           fire-and-forget  --priority urgent --type task --one --dry-run
 ap ask <target> "<question>"       blocking         --timeout 180 --spawn --no-spawn --budget 0.5
 ap reply <thread> "<msg>"          answer a message
-ap peer <dir> [--as N] [--allow P] launch an agent in <dir> in a separate detached zellij session
+ap peer <dir> [--as N] [--policy P] launch an agent in <dir> in a separate detached zellij session
+ap policy [list|show <name>]        permission policies used when launching agents
 ap attention [--tui]               what needs you; --tui to triage interactively
 ap wake <target>                   nudge an agent about queued mail
 ap status "<text>"                 what you are working on, shown in everyone's `ap who`
