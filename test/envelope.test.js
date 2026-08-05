@@ -4,7 +4,7 @@ import test from 'node:test';
 import { useTempStore } from './helpers.js';
 
 useTempStore();
-const { create, isExpired, renderBlock, renderLine, sanitizeBody, stripControls, validate } =
+const { create, isExpired, isSideQuestion, renderBlock, renderLine, sanitizeBody, stripControls, validate } =
   await import('../src/envelope.js');
 const { config } = await import('../src/paths.js');
 
@@ -97,4 +97,30 @@ test('renderBlock batches several messages into one payload', () => {
   assert.match(block, /You have 2 messages/);
   assert.match(block, /first/);
   assert.match(block, /second/);
+});
+
+test('a clarifying question asked back is framed as a side question', () => {
+  const request = create({ ...base, body: 'regenerate the SDK types', type: 'task' });
+  const question = create({
+    ...base,
+    body: 'keep the old field as deprecated, or remove it?',
+    type: 'ask',
+    thread: request.thread,
+    inReplyTo: request.id,
+    hop: 2,
+  });
+  assert.equal(isSideQuestion(question), true);
+  const line = renderLine(question);
+  assert.match(line, /SIDE QUESTION/);
+  assert.match(line, /carry on with what you were doing/);
+  // Deliberately not /btw: a mode that cannot make tool calls cannot run `ap reply`, so the
+  // answer would never get back to the asker.
+  assert.ok(!line.includes('/btw'));
+  assert.ok(!line.includes('\n'));
+});
+
+test('a fresh ask is not treated as a side question', () => {
+  const fresh = create({ ...base, body: 'what does verifyToken return?', type: 'ask' });
+  assert.equal(isSideQuestion(fresh), false);
+  assert.ok(!renderLine(fresh).includes('SIDE QUESTION'));
 });

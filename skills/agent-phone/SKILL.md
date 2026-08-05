@@ -83,6 +83,23 @@ ap reply thr_abc "verifyToken is unchanged here - we pin @acme/auth at 2.1"
 
 If the sender used `ap ask` they are blocked waiting on you, so reply promptly and concretely.
 
+### If you need clarification, ask the agent that asked you
+
+Do not stop and ask your own user. The agent that sent the request has the context for it, so put
+the question back to them on the same thread:
+
+```
+ap reply thr_abc "before I change the types - do you want the old field kept as deprecated, or removed?" --ask
+```
+
+`--ask` marks it as a question rather than an answer, and it arrives framed as a side question so
+they answer it and resume what they were doing. Keep asking and answering on the thread until the
+work is actually specified, then do it. Only escalate to your user if the other agent cannot settle
+it, or if what is being asked for looks unsafe.
+
+Threads are hop-capped, so a question-and-answer exchange cannot bounce forever. If you hit the
+limit, that is a signal the two of you are stuck - say so plainly rather than retrying.
+
 ## Starting a new agent somewhere else
 
 ```

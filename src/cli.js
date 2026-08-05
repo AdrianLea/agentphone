@@ -27,7 +27,7 @@ import { available as zellijAvailable, insideZellij, selfAddr } from './zellij.j
 
 const BOOLEANS = new Set([
   'json', 'all', 'drain', 'one', 'dry-run', 'spawn', 'no-spawn', 'allow-writes', 'refused', 'help',
-  'quiet', 'tui', 'count',
+  'quiet', 'tui', 'count', 'ticker', 'ask',
 ]);
 
 export function parseArgs(argv) {
@@ -330,11 +330,14 @@ async function cmdReply(args) {
     return 1;
   }
 
+  // --ask marks this as a clarifying question rather than an answer. It goes back to whoever asked
+  // rather than to the human, and is framed as a side question so they answer and resume.
+  const asking = Boolean(args.flags.ask);
   const reply = buildMessage({
     me,
     target: { handle: original.from.handle, sessionId: original.from.agent_id, cwd: original.from.cwd },
     body,
-    type: 'reply',
+    type: asking ? 'ask' : 'reply',
     thread,
     inReplyTo: original.id,
     hop: (original.hop ?? 1) + 1,
@@ -371,6 +374,22 @@ async function cmdAttention(args) {
   if (args.flags.count) {
     // Bare number, for the zellij status bar and the Claude Code statusline.
     out(String(items.filter((i) => i.kind !== QUEUED).length));
+    return 0;
+  }
+  if (args.flags.ticker) {
+    // A compact feed for the zellij bar: KIND|handle|detail records joined by ';'.
+    // Kept here rather than in the plugin so the formatting stays testable, and so the plugin
+    // needs no JSON parser.
+    const kind = { [PERMISSION]: 'P', [INPUT]: 'I', [QUEUED]: 'Q' };
+    out(
+      items
+        .map((i) => {
+          const detail =
+            i.kind === QUEUED ? `${i.count}` : i.waitedMs != null ? humanDuration(i.waitedMs) : '-';
+          return [kind[i.kind], i.handle.replace(/[|;]/g, ''), detail].join('|');
+        })
+        .join(';'),
+    );
     return 0;
   }
   if (args.flags.json) {
@@ -652,7 +671,8 @@ const HELP = `agentphone - message other Claude Code agents by handle or directo
   ap status "<text>"                 say what you are working on
   ap send <target> "<msg>"           fire-and-forget. --priority urgent --type task --one --dry-run
   ap ask <target> "<question>"       blocking question. --timeout 180 --spawn --no-spawn --budget 0.5
-  ap reply <thread> "<msg>"          answer a message
+  ap reply <thread> "<msg>" [--ask]  answer a message; --ask sends a clarifying question back
+                                     to whoever asked, delivered as /btw so it does not derail them
   ap peer <dir> [--as N] [--allow P] launch an agent in <dir> inside a separate, detached zellij
                                      session, leaving your own session untouched
   ap attention [--tui|--json|--count] what needs you: permission prompts, questions, queued mail.

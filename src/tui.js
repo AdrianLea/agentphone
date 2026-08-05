@@ -6,6 +6,7 @@ import { phonebook } from './registry.js';
 import { buildMessage, deliver, selfDescriptor } from './send.js';
 import { pending } from './store.js';
 import { run, tildify } from './util.js';
+import { closePane, listPanes, selfAddr } from './zellij.js';
 
 const ESC = '\u001b';
 const C = {
@@ -207,7 +208,30 @@ async function doWake(item) {
  * a TTY. That is what keeps it out of reach of agents - approving another agent's permission
  * prompt must stay a human action, or the message channel becomes a privilege-escalation channel.
  */
+export const FLOATER_PANE_NAME = 'ap-attention';
+
+/**
+ * Make the keybinding a toggle. zellij's `Run` action always spawns a new pane, so pressing the
+ * key again would stack floaters. Instead this instance looks for an existing floater and closes
+ * it, then exits - and because the keybind sets close_on_exit, its own pane goes too.
+ *
+ * The name is matched exactly. A loose match would be dangerous: a pane running a Claude session
+ * whose title merely contains "agentphone" would otherwise be closed along with it.
+ */
+async function closeExistingFloater() {
+  const self = selfAddr();
+  if (!self) return false;
+  const panes = await listPanes(self.session);
+  const others = panes.filter(
+    (p) => p.id !== self.pane && p.type === 'terminal' && p.title.trim() === FLOATER_PANE_NAME,
+  );
+  for (const pane of others) await closePane(self.session, pane.id);
+  return others.length > 0;
+}
+
 export async function runTui() {
+  if (await closeExistingFloater()) return 0;
+
   if (!process.stdin.isTTY) {
     process.stderr.write(
       'ap attention --tui is interactive and must be run from a terminal.\n' +

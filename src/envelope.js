@@ -136,11 +136,28 @@ function replyHint(msg) {
     : ` To respond: ap reply ${msg.thread} "..."`;
 }
 
+/**
+ * A clarifying question asked back along a thread, as opposed to a fresh request.
+ *
+ * Claude Code has a `/btw` command - "ask a quick side question without interrupting the main
+ * conversation" - which looks like the perfect delivery mechanism for these. It is deliberately
+ * NOT used: a side-question mode that cannot make tool calls also cannot run `ap reply`, so the
+ * answer would be written into the recipient's own transcript and never reach the asker. The
+ * failure would be silent, which is the worst kind. Framing carries the same intent and keeps the
+ * reply path working.
+ */
+export function isSideQuestion(msg) {
+  return msg.type === 'ask' && Boolean(msg.in_reply_to);
+}
+
 /** Single-line form, for typing into a pane. Never contains a newline. */
 export function renderLine(msg) {
   const subject = msg.subject ? `${msg.subject}: ` : '';
+  const prefix = isSideQuestion(msg)
+    ? 'SIDE QUESTION from the agent you asked - answer it briefly, then carry on with what you were doing. '
+    : '';
   return oneLine(
-    `<agent-message ${attrs(msg)}>${subject}${msg.body}</agent-message> ${GUIDANCE}${replyHint(msg)}`,
+    `${prefix}<agent-message ${attrs(msg)}>${subject}${msg.body}</agent-message> ${GUIDANCE}${replyHint(msg)}`,
   );
 }
 

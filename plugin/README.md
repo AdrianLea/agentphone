@@ -117,3 +117,22 @@ the `Caused by:` under `failed to load plugin from instance`.
 
 `Failed to read permission cache file: No such file or directory` is **not** an error you need to
 fix. It just means no grant is cached yet, so zellij is about to ask you for `RunCommands`.
+
+## The ticker
+
+The bar scrolls agent status across itself. Data comes from `ap attention --ticker`, a compact feed
+of `KIND|handle|detail` records:
+
+```
+P|api|4m12s;I|worker|38s;Q|docs|2
+```
+
+which renders as `API ▲ PERM 4m12s   │   WORKER ◆ ASKS 38s   │   DOCS ▪ MAIL 2`, colour-coded per
+item (red for a blocked agent, softer slots for the rest).
+
+It sits still when everything fits, and only scrolls when there is more to read than the width
+allows - motion should mean something, not be decoration. With nothing waiting it shows a dimmed
+`AGENTPHONE ▪ ALL CLEAR`.
+
+Animation ticks at 0.25s but `ap` is only re-run every ~6s. Animating by re-reading would spawn a
+process several times a second for no benefit.
