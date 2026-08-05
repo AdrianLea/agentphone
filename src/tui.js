@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import readline from 'node:readline';
 
 import { INPUT, PERMISSION, QUEUED, attention, fit, humanDuration } from './attention.js';
@@ -30,9 +33,9 @@ const write = (s) => process.stdout.write(s);
 const clear = () => write(`${ESC}[2J${ESC}[H`);
 
 function keysFor(item) {
-  if (item.kind === PERMISSION) return '[a] approve  [d] deny  [g] go to pane';
-  if (item.kind === INPUT) return '[r] reply  [g] go to pane';
-  return '[w] wake  [g] go to pane';
+  if (item.kind === PERMISSION) return '[a] approve  [d] deny  [g] go to it';
+  if (item.kind === INPUT) return '[r] reply  [g] go to it';
+  return '[w] wake  [g] go to it';
 }
 
 function render(items, cursor, note) {
@@ -96,26 +99,52 @@ async function prompt(question) {
   return answer.trim();
 }
 
+/**
+ * Take me to that agent.
+ *
+ * Three cases, and the point is that all three do something rather than explaining why they
+ * cannot. zellij can neither focus a pane in another session nor move a pane between sessions, so
+ * a cross-session agent gets a new tab that attaches to its session - nested, but it puts the
+ * agent in front of you, which is what was asked for.
+ */
 async function doJump(item) {
   const z = item.agent.zellij;
-  if (!z) return `${C.red}no pane for ${item.handle}${C.reset}`;
   const here = process.env.ZELLIJ_SESSION_NAME;
-  if (z.session !== here) {
-    // Panes cannot be focused across zellij sessions, and a pane cannot be moved between them.
-    return (
-      `${C.amber}${item.handle} lives in zellij session "${z.session}", not this one.${C.reset}\n` +
-      `  ${C.grey}open it in a separate terminal with:  zellij attach ${z.session}${C.reset}`
-    );
-  }
-  const tabs = await run('zellij', ['action', 'list-tabs'], { timeoutMs: 8000 });
-  await run('zellij', ['action', 'focus-pane-id', z.pane], { timeoutMs: 8000 });
-  // Name the tab after the agent so it is identifiable once you are there.
-  if (tabs.ok) {
+
+  if (z && z.session === here) {
+    await run('zellij', ['action', 'focus-pane-id', z.pane], { timeoutMs: 8000 });
+    // Name the tab after the agent so it is identifiable once you are there.
     const info = await run('zellij', ['action', 'current-tab-info'], { timeoutMs: 8000 });
     const id = info.stdout.match(/id:\s*(\d+)/)?.[1];
     if (id) await run('zellij', ['action', 'rename-tab-by-id', id, item.handle], { timeoutMs: 8000 });
+    return null; // focus moved; the floater is done
   }
-  return null; // focus moved away; the floater closes
+
+  if (z && z.session !== here) {
+    // Open the tab from a layout that runs the attach directly. Creating a bare tab and then
+    // hunting for "the new pane" is unreliable - pane titles like "Pane #1" are not unique across
+    // tabs, so a search can find someone else's pane and type into it.
+    const layout = path.join(os.tmpdir(), `agentphone-attach-${z.session}.kdl`);
+    fs.writeFileSync(
+      layout,
+      `layout {\n    pane command="zellij" {\n        args "attach" "${z.session}"\n    }\n}\n`,
+      { mode: 0o600 },
+    );
+    const r = await run(
+      'zellij',
+      ['action', 'new-tab', '--layout', layout, '--name', `${item.handle}@${z.session}`],
+      { timeoutMs: 12_000 },
+    );
+    if (!r.ok) return `${C.red}could not open a tab: ${r.stderr.trim()}${C.reset}`;
+    return null;
+  }
+
+  // No pane at all: the agent is live but not running inside zellij, so there is nothing to show.
+  return (
+    `${C.amber}${item.handle} is not running in a zellij pane, so there is nothing to open.${C.reset}\n` +
+    `  ${C.grey}it is reachable by mailbox, and you can query its directory with:` +
+    ` ap ask ${item.handle} "..." --spawn${C.reset}`
+  );
 }
 
 async function doPermission(item, action) {
@@ -211,26 +240,29 @@ async function doWake(item) {
 export const FLOATER_PANE_NAME = 'ap-attention';
 
 /**
- * Make the keybinding a toggle. zellij's `Run` action always spawns a new pane, so pressing the
- * key again would stack floaters. Instead this instance looks for an existing floater and closes
- * it, then exits - and because the keybind sets close_on_exit, its own pane goes too.
+ * Retire any older floater so pressing the key twice cannot stack them.
  *
- * The name is matched exactly. A loose match would be dangerous: a pane running a Claude session
- * whose title merely contains "agentphone" would otherwise be closed along with it.
+ * This used to close the old one and then exit, making the key a toggle - but zellij's `Run`
+ * always spawns a pane first, so a "toggle" meant a pane visibly appearing just to make both
+ * disappear. Replacing the old one instead makes the key idempotent: press it as often as you
+ * like and you get exactly one, current floater. Dismiss with q, Esc, or Alt+f.
+ *
+ * The name is matched exactly. A loose match would be dangerous: it would also close any pane
+ * whose title merely contains the name, including a live Claude session.
  */
-async function closeExistingFloater() {
+async function retireOlderFloaters() {
   const self = selfAddr();
-  if (!self) return false;
+  if (!self) return;
   const panes = await listPanes(self.session);
-  const others = panes.filter(
-    (p) => p.id !== self.pane && p.type === 'terminal' && p.title.trim() === FLOATER_PANE_NAME,
-  );
-  for (const pane of others) await closePane(self.session, pane.id);
-  return others.length > 0;
+  for (const pane of panes) {
+    if (pane.id !== self.pane && pane.type === 'terminal' && pane.title.trim() === FLOATER_PANE_NAME) {
+      await closePane(self.session, pane.id);
+    }
+  }
 }
 
 export async function runTui() {
-  if (await closeExistingFloater()) return 0;
+  await retireOlderFloaters();
 
   if (!process.stdin.isTTY) {
     process.stderr.write(
